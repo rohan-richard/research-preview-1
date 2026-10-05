@@ -91,6 +91,14 @@ struct RootView: View {
             AgentNetworkView()
                 .presentationBackground(Theme.base)
         }
+        .sheet(isPresented: Binding(get: { model.portal.isPresented }, set: { if !$0 { model.portal.hide() } })) {
+            PortalBrowserSheet(device: model.portal) {
+                model.companion.endSession(orb: model.orb)
+                model.portal.cancelAll()
+            }
+            .presentationDetents([.large])
+            .presentationBackground(Theme.base)
+        }
         .fullScreenCover(isPresented: $model.showRecap) {
             RecapPlayerView()
         }

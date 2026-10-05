@@ -117,13 +117,14 @@ enum AppointmentKind: String, Codable {
 }
 
 enum AppointmentStatus: String, Codable {
-    case confirmed, pending, cancelled
+    case confirmed, pending, cancelled, visited
 
     var label: String {
         switch self {
         case .confirmed: return "Confirmed"
         case .pending: return "Pending"
         case .cancelled: return "Cancelled"
+        case .visited: return "Visited"
         }
     }
 }

@@ -1,13 +1,8 @@
 import AVFoundation
 import Observation
 
-nonisolated private struct VoiceScribeResponse: Codable {
-    let text: String?
-}
-
-/// The hands-free voice conversation loop: the mic opens, silence detection
-/// commits the turn, ElevenLabs Scribe transcribes through the private backend,
-/// Claude answers, and the backend speaks with the project's custom voice.
+/// The hands-free voice loop: the mic opens, silence ends the turn, and the chat server
+/// transcribes it, answers and speaks the answer back over the same chat socket.
 @Observable final class VoiceSession {
     enum Phase: Equatable {
         case idle
@@ -34,13 +29,13 @@ nonisolated private struct VoiceScribeResponse: Codable {
     private var consecutiveMisses = 0
 
     private var recordingURL: URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent("rumi_voice.m4a")
+        FileManager.default.temporaryDirectory.appendingPathComponent("rumi_voice.wav")
     }
 
     /// Starts the hands-free call. Once started, turns auto-commit on silence.
     func start(model: AppModel) {
-        guard model.aiRouter.mode == .showcase else {
-            phase = .unavailable("Backend voice is not enabled. No audio was sent to temporary services.")
+        guard model.aiRouter.canSend else {
+            phase = .unavailable("Sign in to talk with Rumi.")
             return
         }
         guard phase == .idle || isUnavailable else { return }
@@ -97,7 +92,7 @@ nonisolated private struct VoiceScribeResponse: Codable {
     // MARK: - Listening
 
     private func startListening(model: AppModel) {
-        guard shouldContinue, model.aiRouter.mode == .showcase else { return }
+        guard shouldContinue, model.aiRouter.canSend else { return }
         heardText = ""
         replyText = ""
         Task {
@@ -106,7 +101,7 @@ nonisolated private struct VoiceScribeResponse: Codable {
                 phase = .unavailable("I'd love to hear you — allow the microphone in Settings and we'll talk.")
                 return
             }
-            guard shouldContinue, model.aiRouter.mode == .showcase else { return }
+            guard shouldContinue, model.aiRouter.canSend else { return }
             beginRecording(model: model)
         }
     }
@@ -118,18 +113,21 @@ nonisolated private struct VoiceScribeResponse: Codable {
 
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
             try session.setActive(true)
+            // The chat server reads raw 16 kHz mono 24-bit little-endian PCM.
             let settings: [String: Any] = [
-                AVFormatIDKey: kAudioFormatMPEG4AAC,
-                AVSampleRateKey: 44_100,
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: 16_000,
                 AVNumberOfChannelsKey: 1,
-                AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue,
+                AVLinearPCMBitDepthKey: 24,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false,
             ]
             let recorder = try AVAudioRecorder(url: recordingURL, settings: settings)
             recorder.isMeteringEnabled = true
             guard recorder.record() else {
-                phase = .unavailable("Voice needs a real microphone — install Rumi on your iPhone via the Rork app to talk out loud.")
+                phase = .unavailable("Voice needs a microphone. Allow it in Settings and try again.")
                 return
             }
             self.recorder = recorder
@@ -140,7 +138,7 @@ nonisolated private struct VoiceScribeResponse: Codable {
             startListeningMeter(model: model)
         } catch {
             print("[Rumi] voice recording unavailable: \(error.localizedDescription)")
-            phase = .unavailable("Voice needs a real microphone — install Rumi on your iPhone via the Rork app to talk out loud.")
+            phase = .unavailable("Voice needs a microphone. Allow it in Settings and try again.")
         }
     }
 
@@ -214,123 +212,84 @@ nonisolated private struct VoiceScribeResponse: Codable {
 
         processTask = Task { [weak self] in
             guard let self else { return }
-            let transcript = await self.transcribe()
-            guard !Task.isCancelled else { return }
-
-            guard let transcript, !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                self.consecutiveMisses += 1
-                self.heardText = ""
-                // Only nudge after a couple of genuine misses — otherwise just
-                // keep listening so it feels continuous, not broken.
-                self.replyText = self.consecutiveMisses >= 2 ? "Still here — take your time, I'm listening." : ""
-                model.orb.set(.ambient)
-                self.phase = .idle
-                if self.shouldContinue {
-                    try? await Task.sleep(for: .milliseconds(500))
-                    if self.shouldContinue { self.startListening(model: model) }
+            guard let pcm = Self.pcm(fromWAV: recordingURL), pcm.count > 16_000 * 3 / 2 else {
+                self.keepListening(model: model)
+                return
+            }
+            var spoken = Data()
+            do {
+                let reply = try await model.aiRouter.speak(pcm: pcm, onTranscript: { [weak self] text in
+                    self?.heardText = text
+                    self?.phase = .thinking
+                }, onDelta: { [weak self] delta in
+                    self?.replyText += delta
+                }, onAudio: { chunk in
+                    spoken.append(chunk)
+                })
+                guard !Task.isCancelled else { return }
+                guard !self.heardText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    self.keepListening(model: model)
+                    return
                 }
+                self.consecutiveMisses = 0
+                model.companion.recordSpokenTurn(heard: self.heardText, reply: reply)
+                self.replyText = reply
+                await self.play(spoken, model: model)
+            } catch is CancellationError {
                 return
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.shouldContinue = false
+                model.orb.set(.ambient)
+                self.phase = .unavailable((error as? RumiConnectionError)?.errorDescription ?? "Rumi could not answer out loud. Try again in a moment.")
             }
-
-            self.consecutiveMisses = 0
-            self.heardText = transcript
-            self.phase = .thinking
-            let reply = await model.companion.voiceReply(to: transcript, orb: model.orb)
-            guard !Task.isCancelled else { return }
-            self.replyText = reply
-
-            await self.speak(reply, model: model)
         }
     }
 
-    // MARK: - ElevenLabs Scribe through backend
-
-    private func transcribe() async -> String? {
-        guard let audioData = try? Data(contentsOf: recordingURL), audioData.count > 2_000 else { return nil }
-        guard let url = URL(string: "\(AppConfig.functionsURL)/voice/stt") else { return nil }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 45
-
-        let boundary = "rumi-\(UUID().uuidString)"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
-        var body = Data()
-        func field(_ name: String, _ value: String) {
-            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))
-        }
-        field("model_id", "scribe_v2")
-        field("diarize", "false")
-        field("tag_audio_events", "false")
-        field("no_verbatim", "true")
-        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"voice.m4a\"\r\nContent-Type: audio/mp4\r\n\r\n".utf8))
-        body.append(audioData)
-        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
-        request.httpBody = body
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                print("[Rumi] scribe returned \((response as? HTTPURLResponse)?.statusCode ?? -1)")
-                return nil
-            }
-            return try JSONDecoder().decode(VoiceScribeResponse.self, from: data).text
-        } catch {
-            print("[Rumi] scribe failed: \(error.localizedDescription)")
-            return nil
+    /// Nothing usable was heard: say so only after a couple of misses, then listen again.
+    private func keepListening(model: AppModel) {
+        consecutiveMisses += 1
+        heardText = ""
+        replyText = consecutiveMisses >= 2 ? "Still here. Take your time, I'm listening." : ""
+        model.orb.set(.ambient)
+        phase = .idle
+        guard shouldContinue else { return }
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            if self?.shouldContinue == true { self?.startListening(model: model) }
         }
     }
 
-    // MARK: - ElevenLabs voice through backend
+    /// The samples from a WAV file. AVAudioRecorder can put other chunks before "data", so walk them.
+    nonisolated static func pcm(fromWAV url: URL) -> Data? {
+        guard let file = try? Data(contentsOf: url), file.count > 12,
+              file.prefix(4) == Data("RIFF".utf8), file[8..<12] == Data("WAVE".utf8) else { return nil }
+        var offset = 12
+        while offset + 8 <= file.count {
+            let id = file[offset..<offset + 4]
+            let size = file[offset + 4..<offset + 8].enumerated().reduce(0) { $0 | Int($1.element) << (8 * $1.offset) }
+            let body = offset + 8
+            if id == Data("data".utf8) { return Data(file[body..<min(body + size, file.count)]) }
+            offset = body + size + (size & 1)
+        }
+        return nil
+    }
 
-    private func speak(_ text: String, model: AppModel) async {
-        guard !text.isEmpty else {
+    private func play(_ audio: Data, model: AppModel) async {
+        guard audio.count > 800, let player = try? AVAudioPlayer(data: audio) else {
             finishSpeaking(model: model)
             return
         }
-        guard let url = URL(string: "\(AppConfig.functionsURL)\(AppConfig.voicePath)") else {
-            finishSpeaking(model: model)
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 45
-        request.httpBody = try? JSONSerialization.data(withJSONObject: [
-            "text": text,
-            // Turbo v2.5 keeps spoken turns snappy (~250ms) while holding the
-            // custom voice — eleven_v3 was richer but too slow for live talk.
-            "model_id": "eleven_turbo_v2_5",
-        ])
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200, data.count > 800 else {
-                print("[Rumi] tts returned \((response as? HTTPURLResponse)?.statusCode ?? -1)")
-                finishSpeaking(model: model)
-                return
-            }
-            let player = try AVAudioPlayer(data: data)
-            player.isMeteringEnabled = true
-            self.player = player
-            SoundEngine.shared.pauseBed(fade: 0.25)
-            player.volume = 1
-            player.play()
-            phase = .speaking
-            model.orb.set(.speaking)
-            startSpeakingMeter()
-
-            let duration = player.duration
-            try? await Task.sleep(for: .seconds(duration + 0.15))
-            if phase == .speaking {
-                finishSpeaking(model: model)
-            }
-        } catch {
-            print("[Rumi] tts playback failed: \(error.localizedDescription)")
-            finishSpeaking(model: model)
-        }
+        player.isMeteringEnabled = true
+        self.player = player
+        SoundEngine.shared.pauseBed(fade: 0.25)
+        player.volume = 1
+        player.play()
+        phase = .speaking
+        model.orb.set(.speaking)
+        startSpeakingMeter()
+        try? await Task.sleep(for: .seconds(player.duration + 0.15))
+        if phase == .speaking { finishSpeaking(model: model) }
     }
 
     private func startSpeakingMeter() {

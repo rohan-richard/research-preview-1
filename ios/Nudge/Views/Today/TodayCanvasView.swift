@@ -98,13 +98,15 @@ struct TodayCanvasView: View {
             Text("Rumi")
                 .font(NudgeType.display(29))
                 .foregroundStyle(Theme.ink)
-            Text("DEMO")
-                .font(NudgeType.rounded(10, .semibold))
-                .tracking(1)
-                .foregroundStyle(Theme.warm)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(Theme.accentSoft, in: .capsule)
+            if !model.isLive {
+                Text("DEMO")
+                    .font(NudgeType.rounded(10, .semibold))
+                    .tracking(1)
+                    .foregroundStyle(Theme.warm)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Theme.accentSoft, in: .capsule)
+            }
             Spacer()
             if model.musicOn {
                 ChromeIcon(systemName: "speaker.wave.2", accessibilityText: "Mute music") {

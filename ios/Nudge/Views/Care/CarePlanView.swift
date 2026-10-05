@@ -7,7 +7,7 @@ import SwiftUI
 struct CarePlanView: View {
     @Environment(AppModel.self) private var model
 
-    private var plan: CarePlan { model.persona.carePlan }
+    private var plan: CarePlan { model.shownCarePlan }
 
     var body: some View {
         ScrollView {

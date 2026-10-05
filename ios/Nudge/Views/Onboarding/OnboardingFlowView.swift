@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Short, reversible setup. Exploring the prototype never implies patient sign-in.
+/// Short, reversible setup. Sign-in is optional here. The demo works without an account.
 struct OnboardingFlowView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -15,7 +15,7 @@ struct OnboardingFlowView: View {
     @State private var selectedPathway: CarePathway = .metabolic
     @State private var tone: String = "Straight talk"
     @State private var music: Bool = false
-    @State private var showSignInNotice: Bool = false
+    @State private var showSignIn: Bool = false
     @State private var showConnection: Bool = false
     @State private var pendingImport: DemoRecordImport? = nil
 
@@ -52,10 +52,8 @@ struct OnboardingFlowView: View {
         .sheet(isPresented: $showConnection) {
             FastenConnectionView(pathway: selectedPathway) { pendingImport = $0 }
         }
-        .alert("Sign-in isn't connected yet", isPresented: $showSignInNotice) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("You can explore Rumi with sample information. No patient account is created and no medical records are connected by this setup.")
+        .sheet(isPresented: $showSignIn) {
+            SignInView().presentationBackground(Theme.base)
         }
     }
 
@@ -256,12 +254,6 @@ struct OnboardingFlowView: View {
 
     private var footer: some View {
         VStack(spacing: 8) {
-            if stage == .welcome {
-                Text("Demo preview · sample information")
-                    .font(NudgeType.rounded(12))
-                    .foregroundStyle(Theme.inkMuted)
-                    .padding(.bottom, 4)
-            }
             Button {
                 switch stage {
                 case .welcome: move(to: .scenario)
@@ -282,10 +274,17 @@ struct OnboardingFlowView: View {
             .buttonStyle(NudgeButtonStyle())
             .accessibilityIdentifier("onboarding.continue")
             if stage == .welcome {
-                Button("Sign in") { showSignInNotice = true }
-                    .accessibilityIdentifier("onboarding.signIn")
-                    .font(NudgeType.rounded(14, .semibold))
-                    .frame(minHeight: 44)
+                if let user = model.api.user {
+                    Button("Signed in as \(user.email)") { showSignIn = true }
+                        .accessibilityIdentifier("onboarding.signedInAs")
+                        .font(NudgeType.rounded(14, .medium))
+                        .frame(minHeight: 44)
+                } else {
+                    Button("Sign in") { showSignIn = true }
+                        .accessibilityIdentifier("onboarding.signIn")
+                        .font(NudgeType.rounded(14, .semibold))
+                        .frame(minHeight: 44)
+                }
             } else if stage == .preferences {
                 Button("Skip for now") { finish(applyPreferences: false) }
                     .accessibilityIdentifier("onboarding.skip")
@@ -304,7 +303,7 @@ struct OnboardingFlowView: View {
 
     private var primaryTitle: String {
         switch stage {
-        case .welcome: return "Explore the demo"
+        case .welcome: return "Get started"
         case .scenario: return "Continue"
         case .records: return pendingImport == nil ? "Continue without connecting" : "Continue"
         case .preferences: return isPreview ? "Done" : "Open Today"

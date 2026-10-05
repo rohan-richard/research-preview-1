@@ -15,7 +15,7 @@ import Observation
     private var generation: UUID? = nil
     private weak var app: AppModel?
 
-    init(transport: (any ChatTransport)? = nil) { ai = transport ?? CompanionAI() }
+    init(transport: any ChatTransport) { ai = transport }
     func configure(model: AppModel) { app = model }
 
     func restore(turns: [ConversationTurn], draft: String, context: CareContext? = nil) {
@@ -93,7 +93,7 @@ import Observation
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isThinking else { return }
         if let app, !app.aiRouter.canSend {
-            lastError = "Finish backend setup before sending. Your question is still here; temporary AI has not been used."
+            lastError = "Sign in to chat with Rumi. Your question is still here."
             return
         }
         endSession(orb: orb)
@@ -142,21 +142,18 @@ import Observation
     }
 
     /// Voice shares the same operation coordinator; cancellation cannot append a fallback answer.
-    func voiceReply(to text: String, orb: OrbState) async -> String {
-        guard !Task.isCancelled, !isThinking, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
-        if let app, !app.aiRouter.canSend { return "" }
-        send(text, orb: orb)
-        guard isThinking else { return "" }
-        let operation = generation
-        let work = streamTask
-        await withTaskCancellationHandler {
-            await work?.value
-        } onCancel: {
-            work?.cancel()
+    /// A spoken turn already ran on the server; keep it in the chat history like a typed one.
+    func recordSpokenTurn(heard: String, reply: String) {
+        let heard = heard.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !heard.isEmpty else { return }
+        let question = ConversationTurn(role: .user, text: heard)
+        turns.append(question)
+        if !reply.isEmpty {
+            var answer = ConversationTurn(role: .companion, text: reply)
+            answer.replyTo = question.id
+            turns.append(answer)
         }
-        guard !Task.isCancelled, generation == operation,
-              let reply = turns.last, reply.role == .companion, reply.delivery == .complete else { return "" }
-        return reply.text
+        app?.persistUserData()
     }
 
     private func ask(replyTo userID: UUID, orb: OrbState) {

@@ -19,11 +19,14 @@ struct MedicationsView: View {
                 }
                 .padding(.top, 8)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    TideView(level: overallTide)
-                    Text("Sample coverage over 30 days · not confirmed dose-taking.")
-                        .font(NudgeType.rounded(12))
-                        .foregroundStyle(Theme.inkMuted)
+                // The tide needs dose history, which only the sample patients have.
+                if !model.isLive {
+                    VStack(alignment: .leading, spacing: 8) {
+                        TideView(level: overallTide)
+                        Text("Sample coverage over 30 days · not confirmed dose-taking.")
+                            .font(NudgeType.rounded(12))
+                            .foregroundStyle(Theme.inkMuted)
+                    }
                 }
 
                 VStack(spacing: 12) {
@@ -39,6 +42,11 @@ struct MedicationsView: View {
     }
 
     private var subtitle: String {
+        if model.isLive {
+            return model.medications.isEmpty
+                ? "Your health records list no current medications."
+                : "From your health records."
+        }
         switch model.pathway {
         case .metabolic: return "Three friends doing quiet work, every day."
         case .oncology: return "The supporting cast that makes treatment livable."

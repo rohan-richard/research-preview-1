@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var showAIConnection: Bool = false
     @State private var showPrivacy: Bool = false
     @State private var showWelcomePreview: Bool = false
+    @State private var showSignIn: Bool = false
 
     var body: some View {
         @Bindable var model = model
@@ -36,6 +37,37 @@ struct SettingsView: View {
                             .buttonStyle(NudgeButtonStyle())
                         }
                         .padding(.top, 16)
+
+                        section("Account") {
+                            if let user = model.api.user {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(user.email)
+                                        .font(NudgeType.rounded(14.5))
+                                        .foregroundStyle(Theme.ink)
+                                        .accessibilityIdentifier("settings.accountEmail")
+                                    Text("Signed in with \(user.providers.joined(separator: ", ")).")
+                                        .font(NudgeType.rounded(11.5))
+                                        .foregroundStyle(Theme.inkMuted)
+                                    Button("Sign out") { Task { await model.api.signOut() } }
+                                        .font(NudgeType.rounded(14, .semibold))
+                                        .foregroundStyle(Theme.warm)
+                                        .frame(minHeight: 44)
+                                        .accessibilityIdentifier("settings.signOut")
+                                }
+                            } else {
+                                Button { showSignIn = true } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("Sign in").font(NudgeType.serif(22))
+                                            Text("Apple or Google. Keeps your information on every device.")
+                                                .font(NudgeType.rounded(13)).foregroundStyle(Theme.inkMuted)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                    }.foregroundStyle(Theme.ink).frame(minHeight: 44)
+                                }.accessibilityIdentifier("settings.signIn")
+                            }
+                        }
 
                         section("You") {
                             VStack(alignment: .leading, spacing: 10) {
@@ -69,7 +101,7 @@ struct SettingsView: View {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text("AI connection").font(NudgeType.serif(22))
-                                        Text(model.aiRouter.mode.title).font(NudgeType.rounded(13)).foregroundStyle(Theme.inkMuted)
+                                        Text(model.aiRouter.canSend ? "Rumi chat · signed in" : "Rumi chat · sign in to start").font(NudgeType.rounded(13)).foregroundStyle(Theme.inkMuted)
                                     }
                                     Spacer()
                                     Image(systemName: "chevron.right")
@@ -258,6 +290,7 @@ struct SettingsView: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .sheet(isPresented: $showAIConnection) { AIConnectionView() }
+        .sheet(isPresented: $showSignIn) { SignInView().presentationBackground(Theme.base) }
         .fullScreenCover(isPresented: $showWelcomePreview) {
             OnboardingFlowView(isPreview: true)
         }

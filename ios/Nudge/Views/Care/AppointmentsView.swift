@@ -13,7 +13,7 @@ struct AppointmentsView: View {
                     Text("Appointments")
                         .font(NudgeType.serif(28))
                         .foregroundStyle(Theme.ink)
-                    Text("Everything coming up, and how to get there easily.")
+                    Text(model.isLive ? "What is coming up, and the visits in your health records." : "Everything coming up, and how to get there easily.")
                         .font(NudgeType.rounded(13))
                         .foregroundStyle(Theme.inkMuted)
                 }
@@ -27,17 +27,36 @@ struct AppointmentsView: View {
                 .foregroundStyle(Theme.inkMuted)
                 .frame(minHeight: 44)
 
-                ForEach(model.appointments.sorted { $0.date < $1.date }) { appointment in
+                ForEach(upcoming) { appointment in
                     NavigationLink(value: CareDestination.appointmentDetail(appointment.id)) {
                         AppointmentRow(appointment: appointment)
                     }
                     .buttonStyle(NudgeButtonStyle())
+                }
+                if !past.isEmpty {
+                    Text("Past visits")
+                        .font(NudgeType.rounded(13, .semibold)).foregroundStyle(Theme.inkMuted)
+                        .padding(.top, 8)
+                    ForEach(past) { appointment in
+                        NavigationLink(value: CareDestination.appointmentDetail(appointment.id)) {
+                            AppointmentRow(appointment: appointment)
+                        }
+                        .buttonStyle(NudgeButtonStyle())
+                    }
                 }
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 120)
         }
         .scrollIndicators(.hidden)
+    }
+
+    private var upcoming: [Appointment] {
+        model.appointments.filter { $0.status != .visited }.sorted { $0.date < $1.date }
+    }
+
+    private var past: [Appointment] {
+        model.appointments.filter { $0.status == .visited }.sorted { $0.date > $1.date }
     }
 }
 
@@ -132,7 +151,7 @@ struct StatusChip: View {
         switch status {
         case .confirmed: return Theme.life
         case .pending: return Theme.attention
-        case .cancelled: return Theme.inkMuted
+        case .cancelled, .visited: return Theme.inkMuted
         }
     }
     var body: some View {
@@ -172,7 +191,7 @@ struct AppointmentDetailView: View {
                             }
                             .buttonStyle(NudgeButtonStyle())
                         }
-                        if appointment.status != .cancelled {
+                        if appointment.status != .cancelled && appointment.status != .visited {
                             NavigationLink(value: CareDestination.visitPrep(appointment.id)) {
                                 prepCard
                             }

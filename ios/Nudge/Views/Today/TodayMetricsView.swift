@@ -47,7 +47,7 @@ struct TodayMetricsView: View {
                                     .font(NudgeType.rounded(11))
                                     .foregroundStyle(Theme.inkMuted)
                             }
-                            Text("Sample · \(latest.date.formatted(.dateTime.month(.abbreviated).day().year()))")
+                            Text("\(model.isLive ? "Your records" : "Sample") · \(latest.date.formatted(.dateTime.month(.abbreviated).day().year()))")
                                 .font(NudgeType.rounded(10))
                                 .foregroundStyle(Theme.inkMuted)
                         }

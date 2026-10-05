@@ -6,10 +6,13 @@ import SwiftUI
 /// it's actually gone; teach it something new from the same breath.
 struct PrivacyCenterView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
 
     @State private var realm: MemoryRealm = .health
     @State private var exported = false
     @State private var confirmingDelete = false
+    @State private var exporting = false
+    @State private var dataError: String? = nil
     @State private var newMemory = ""
     @FocusState private var addFocused: Bool
 
@@ -82,15 +85,16 @@ struct PrivacyCenterView: View {
                     sectionCard("Your data, your rules") {
                         VStack(spacing: 11) {
                             if exported {
-                                Label("Export prepared — it includes everything, readable by you and any clinician.", systemImage: "checkmark")
+                                Label("Export ready. It opened in your browser and includes everything Rumi keeps about you.", systemImage: "checkmark")
                                     .font(NudgeType.rounded(13, .medium))
                                     .foregroundStyle(Theme.life)
                                     .frame(maxWidth: .infinity, alignment: .leading)
+                                    .accessibilityIdentifier("privacy.exported")
                             } else {
                                 Button {
-                                    withAnimation(NudgeSpring.ui) { exported = true }
+                                    Task { await export() }
                                 } label: {
-                                    Text("Export everything")
+                                    Text(exporting ? "Preparing your export…" : "Export everything")
                                         .font(NudgeType.rounded(14.5, .semibold))
                                         .foregroundStyle(Theme.ink)
                                         .frame(maxWidth: .infinity)
@@ -98,6 +102,13 @@ struct PrivacyCenterView: View {
                                         .capsuleGlass()
                                 }
                                 .buttonStyle(NudgeButtonStyle())
+                                .disabled(exporting)
+                                .accessibilityIdentifier("privacy.export")
+                            }
+                            if let dataError {
+                                Text(dataError).font(NudgeType.rounded(12.5)).foregroundStyle(Theme.attention)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .accessibilityIdentifier("privacy.error")
                             }
 
                             Button {
@@ -114,7 +125,7 @@ struct PrivacyCenterView: View {
                                 titleVisibility: .visible
                             ) {
                                 Button("Delete everything", role: .destructive) {
-                                    PersistenceService.wipe()
+                                    Task { await deleteEverything() }
                                 }
                                 Button("Keep my story", role: .cancel) {}
                             }
@@ -369,9 +380,50 @@ struct PrivacyCenterView: View {
                     if consent.source.contains("Epsilon") {
                         model.epsilonConsent = newValue
                     }
+                    if let scope = consent.apiScope, model.isLive {
+                        Task {
+                            do {
+                                try await model.setConsentLive(scope, granted: newValue)
+                                dataError = nil
+                            } catch {
+                                if let index = model.consents.firstIndex(where: { $0.id == consent.id }) { model.consents[index].granted = !newValue }
+                                dataError = "That change was not saved. \(error.localizedDescription)"
+                            }
+                        }
+                    }
                 }
             }
         )
+    }
+
+    private func export() async {
+        guard model.isLive else {
+            withAnimation(NudgeSpring.ui) { exported = true }
+            return
+        }
+        exporting = true
+        defer { exporting = false }
+        do {
+            let link = try await model.requestExport()
+            openURL(link)
+            dataError = nil
+            withAnimation(NudgeSpring.ui) { exported = true }
+        } catch {
+            dataError = error.localizedDescription
+        }
+    }
+
+    private func deleteEverything() async {
+        guard model.isLive else {
+            PersistenceService.wipe()
+            return
+        }
+        do {
+            try await model.deleteAccount()
+            dataError = nil
+        } catch {
+            dataError = "Your account was not deleted. \(error.localizedDescription)"
+        }
     }
 
     private func sectionCard(_ title: String, @ViewBuilder content: () -> some View) -> some View {

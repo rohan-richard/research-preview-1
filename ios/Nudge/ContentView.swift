@@ -16,6 +16,14 @@ struct ContentView: View {
             }
         }
         .animation(NudgeSpring.gentle, value: model.hasOnboarded)
+        .task {
+            await model.api.restoreSession()
+            await model.signedInUserChanged()
+        }
+        .onChange(of: model.api.user?.id) { Task { await model.signedInUserChanged() } }
+        .sheet(isPresented: Binding(get: { model.needsAboutYou && model.hasOnboarded }, set: { model.needsAboutYou = $0 })) {
+            AboutYouSheet().presentationBackground(Theme.base)
+        }
         .onAppear {
             // Stone Kintsugi carries the world; Barley Thunder owns onboarding.
             if model.hasOnboarded {

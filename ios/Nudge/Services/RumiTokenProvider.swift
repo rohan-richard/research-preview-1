@@ -1,38 +1,24 @@
 import Foundation
 
-@MainActor protocol RumiTokenProviding {
-    func token() async throws -> String
-    func configuration(token: String) async throws -> RumiWireProtocol.Configuration
-}
+/// What `GET /v1/chat/token` returns: a 10-minute chat-server JWT for the signed-in patient.
+nonisolated struct RumiChatAccess: Decodable, Equatable {
+    let accessToken: String
+    let expiresIn: Int
+    let socketUrl: String
+    let tenant: String
 
-/// Native equivalent of the iframe's give-token/set-token exchange. The host alone mints JWTs.
-/// Broker profile: authenticated GET returning {"token":"<short-lived JWT>"}; verify against deployment.
-final class RumiTokenProvider: RumiTokenProviding {
-    private let settings: RumiBackendSettings
-    private let hostSession: String
-    init(settings: RumiBackendSettings, hostSession: String) {
-        self.settings = settings
-        self.hostSession = hostSession
-    }
+    var socketURL: URL? { URL(string: socketUrl) }
 
-    func token() async throws -> String {
-        guard !hostSession.isEmpty, !hostSession.contains(where: { $0.isWhitespace }), hostSession.utf8.count <= 16_384 else { throw RumiConnectionError.hostSignIn }
-        let endpoint = try settings.endpoints().broker
-        let data = try await get(endpoint, bearer: hostSession)
-        guard let token = try? JSONDecoder().decode(TokenResponse.self, from: data).token,
-              Self.hasUsableExpiry(token) else { throw RumiConnectionError.token }
-        return token
-    }
-
-    func configuration(token: String) async throws -> RumiWireProtocol.Configuration {
-        let endpoint = try settings.endpoints().server.appendingPathComponent("getConfig")
-        let data = try await get(endpoint, bearer: token)
-        guard let value = try? JSONDecoder().decode(RumiWireProtocol.Configuration.self, from: data), value.isValid else { throw RumiConnectionError.configurationResponse }
-        return value
+    /// The chat server's HTTP base: the socket address without its trailing /ws.
+    var serverURL: URL? {
+        guard var parts = URLComponents(string: socketUrl) else { return nil }
+        parts.scheme = parts.scheme == "ws" ? "http" : "https"
+        if parts.path.hasSuffix("/ws") { parts.path = String(parts.path.dropLast(3)) }
+        return parts.url
     }
 
     /// Expiry checking is a usability guard, NOT signature verification or patient authorization.
-    nonisolated static func hasUsableExpiry(_ token: String, now: Date = .now) -> Bool {
+    static func hasUsableExpiry(_ token: String, now: Date = .now) -> Bool {
         let parts = token.split(separator: ".", omittingEmptySubsequences: false)
         guard token.utf8.count <= 16_384, parts.count == 3, parts.allSatisfy({ !$0.isEmpty }),
               token.unicodeScalars.allSatisfy({ CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.").contains($0) }) else { return false }
@@ -41,6 +27,46 @@ final class RumiTokenProvider: RumiTokenProviding {
         guard let data = Data(base64Encoded: payload), let claims = try? JSONDecoder().decode(Expiry.self, from: data) else { return false }
         let remaining = claims.exp - now.timeIntervalSince1970
         return remaining > 15 && remaining <= 660
+    }
+
+    private struct Expiry: Decodable { let exp: Double }
+}
+
+@MainActor protocol RumiTokenProviding {
+    func access() async throws -> RumiChatAccess
+    func configuration(for access: RumiChatAccess) async throws -> RumiWireProtocol.Configuration
+}
+
+/// Our API mints the chat token for the signed-in user. The tenant API key never reaches the app.
+final class RumiAPITokenProvider: RumiTokenProviding {
+    private let api: RumiAPI
+    init(api: RumiAPI) { self.api = api }
+
+    func access() async throws -> RumiChatAccess {
+        let access: RumiChatAccess
+        do {
+            access = try await api.send(.get, "/v1/chat/token")
+        } catch let error as RumiAPIError {
+            throw Self.connectionError(for: error)
+        }
+        guard RumiChatAccess.hasUsableExpiry(access.accessToken), access.socketURL != nil, access.serverURL != nil else { throw RumiConnectionError.token }
+        return access
+    }
+
+    func configuration(for access: RumiChatAccess) async throws -> RumiWireProtocol.Configuration {
+        guard let server = access.serverURL else { throw RumiConnectionError.token }
+        let data = try await get(server.appendingPathComponent("getConfig"), bearer: access.accessToken)
+        guard let value = try? JSONDecoder().decode(RumiWireProtocol.Configuration.self, from: data), value.isValid else { throw RumiConnectionError.configurationResponse }
+        return value
+    }
+
+    nonisolated static func connectionError(for error: RumiAPIError) -> RumiConnectionError {
+        switch error.code {
+        case "onboarding_required": .onboarding
+        case "consent_required": .consent
+        case "chat_server_unavailable": .unavailable
+        default: error == .notSignedIn || error.endsSession ? .signIn : .token
+        }
     }
 
     private func get(_ url: URL, bearer: String) async throws -> Data {
@@ -67,6 +93,3 @@ final class RumiTokenProvider: RumiTokenProviding {
         return result
     }
 }
-
-nonisolated private struct TokenResponse: Decodable { let token: String }
-nonisolated private struct Expiry: Decodable { let exp: Double }

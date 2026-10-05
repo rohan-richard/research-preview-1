@@ -29,9 +29,12 @@ extension AppModel {
             journeys[j].habits[h].title = trimmed
             journeys[j].habits[h].contextLine = support.cue
             journeys[j].habits[h].support = support
+            saveHabitLive(habitID: habitID, title: trimmed, support: support)
         } else if journeyID == nil && habitID == nil {
             let habit = AtomicHabit(title: trimmed, contextLine: support.cue, keptDates: [], support: support)
-            journeys.insert(Journey(title: "A little room for change", why: support.reason, habits: [habit], gardenSeed: 72), at: 0)
+            let journey = Journey(title: "A little room for change", why: support.reason, habits: [habit], gardenSeed: 72)
+            journeys.insert(journey, at: 0)
+            saveNewJourneyLive(journey)
         }
         persistUserData()
     }
@@ -45,6 +48,7 @@ extension AppModel {
         journeys[j].habits[h].keptDates.removeAll { Calendar.current.isDateInToday($0) }
         habitCheckIns.append(.init(habitID: habitID, outcome: outcome, note: note, planAtCheckIn: journeys[j].habits[h].support))
         if outcome == .kept || outcome == .fallback { journeys[j].habits[h].keptDates.append(.now) }
+        saveCheckInLive(habitID: habitID, outcome: outcome, note: note)
         persistUserData()
     }
 
@@ -53,6 +57,7 @@ extension AppModel {
               let h = journeys[j].habits.firstIndex(where: { $0.id == habitID }) else { return }
         habitCheckIns.removeAll { $0.habitID == habitID && Calendar.current.isDateInToday($0.at) }
         journeys[j].habits[h].keptDates.removeAll { Calendar.current.isDateInToday($0) }
+        saveCheckInLive(habitID: habitID, outcome: nil, note: "")
         persistUserData()
     }
 }

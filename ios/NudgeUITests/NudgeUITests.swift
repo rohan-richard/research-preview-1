@@ -3,54 +3,14 @@ import XCTest
 final class NudgeUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
-    }
-
-    @MainActor
-    func testAIConnectionSwitchPreservesTemporaryDraftAndBlocksUnconfiguredBackend() {
-        let app = XCUIApplication()
-        app.launchArguments = ["-nudge.hasOnboarded", "YES", "-nudge.music", "NO", "-nudge.sound", "NO", "-nudge.pathway", "metabolic"]
-        app.launch()
-        XCTAssertTrue(app.buttons["rumi.floating"].waitForExistence(timeout: 10))
-        app.buttons["rumi.floating"].tap()
-        app.buttons["chat.aiConnection"].tap()
-        XCTAssertTrue(app.buttons["ai.mode.showcase"].waitForExistence(timeout: 5))
-        app.buttons["ai.mode.showcase"].tap()
-        let apply = app.buttons["ai.connection.apply"]
-        for _ in 0..<8 where !apply.isHittable { app.swipeUp() }
-        apply.tap()
-        app.buttons.matching(identifier: "ai.connection.confirm").firstMatch.tap()
-        app.buttons["ai.connection.close"].tap()
-        let composer = app.textFields["chat.composer"]
-        XCTAssertTrue(composer.waitForExistence(timeout: 5))
-        composer.tap()
-        let existing = composer.value as? String ?? ""
-        if existing != "What's on your mind?" { composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count)) }
-        composer.typeText("Keep this temporary question")
-        app.buttons["chat.aiConnection"].tap()
-        app.buttons["ai.mode.backend"].tap()
-        for _ in 0..<10 where !apply.isHittable { app.swipeUp() }
-        apply.tap()
-        app.buttons.matching(identifier: "ai.connection.confirm").firstMatch.tap()
-        app.buttons["ai.connection.close"].tap()
-        XCTAssertTrue(app.buttons["chat.backendSetup"].waitForExistence(timeout: 5))
-        XCTAssertNotEqual(composer.value as? String, "Keep this temporary question")
-        app.buttons["chat.aiConnection"].tap()
-        app.buttons["ai.mode.showcase"].tap()
-        for _ in 0..<8 where !apply.isHittable { app.swipeUp() }
-        apply.tap()
-        app.buttons.matching(identifier: "ai.connection.confirm").firstMatch.tap()
-        app.buttons["ai.connection.close"].tap()
-        XCTAssertEqual(composer.value as? String, "Keep this temporary question")
-        XCTAssertFalse(app.buttons["chat.backendSetup"].exists)
-        composer.tap()
-        composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "Keep this temporary question".count))
-        app.buttons["chat.close"].tap()
+        // The launch test runs in every orientation and can leave the simulator sideways.
+        XCUIDevice.shared.orientation = .portrait
     }
 
     @MainActor
     func testOnboardingChoicesBackAndSkipReachTodayWithoutChat() {
         let app = XCUIApplication()
-        app.launchArguments = ["-nudge.hasOnboarded", "NO", "-nudge.music", "NO", "-nudge.sound", "NO", "-nudge.pathway", "metabolic"]
+        app.launchArguments = ["-nudge.hasOnboarded", "NO", "-nudge.music", "NO", "-rumi.signedOut", "YES", "-nudge.sound", "NO", "-nudge.pathway", "metabolic"]
         app.launch()
         XCTAssertTrue(app.buttons["onboarding.continue"].waitForExistence(timeout: 10))
         app.buttons["onboarding.continue"].tap()
@@ -83,7 +43,7 @@ final class NudgeUITests: XCTestCase {
     @MainActor
     func testDemoConnectionNeedsBirthdayAndConsent() {
         let app = XCUIApplication()
-        app.launchArguments = ["-nudge.hasOnboarded", "NO", "-nudge.music", "NO", "-nudge.sound", "NO", "-nudge.pathway", "metabolic"]
+        app.launchArguments = ["-nudge.hasOnboarded", "NO", "-nudge.music", "NO", "-rumi.signedOut", "YES", "-nudge.sound", "NO", "-nudge.pathway", "metabolic"]
         app.launch()
         XCTAssertTrue(app.buttons["onboarding.continue"].waitForExistence(timeout: 10))
         app.buttons["onboarding.continue"].tap()
@@ -93,7 +53,8 @@ final class NudgeUITests: XCTestCase {
         app.buttons["fasten.continue.0"].tap()
         XCTAssertTrue(app.staticTexts["fasten.error"].waitForExistence(timeout: 5))
         let birthday = app.buttons["fasten.sampleDOB"]
-        if !birthday.isHittable { app.swipeUp() }
+        // The pinned Confirm bar covers this button, and XCUITest still calls it hittable.
+        app.swipeUp()
         birthday.tap()
         app.buttons["fasten.continue.0"].tap()
         XCTAssertTrue(app.buttons["fasten.continue.1"].waitForExistence(timeout: 5))
@@ -115,24 +76,26 @@ final class NudgeUITests: XCTestCase {
     @MainActor
     func testFloatingRumiAndComposerSurviveClosing() {
         let app = XCUIApplication()
-        app.launchArguments = ["-nudge.hasOnboarded", "YES", "-nudge.music", "NO", "-nudge.sound", "NO"]
+        app.launchArguments = ["-nudge.hasOnboarded", "YES", "-nudge.music", "NO", "-rumi.signedOut", "YES", "-nudge.sound", "NO"]
         app.launch()
         XCTAssertTrue(app.buttons["rumi.floating"].waitForExistence(timeout: 10))
         app.buttons["tab.care"].tap()
         XCTAssertTrue(app.buttons["rumi.floating"].exists)
         app.buttons["rumi.floating"].tap()
-        let composer = app.textFields["chat.composer"]
+        let composer = app.descendants(matching: .any)["chat.composer"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
         composer.tap(); composer.typeText("A draft to keep")
+        // Drafts persist between launches, so compare with what the box holds.
+        let draft = composer.value as? String
         app.buttons["chat.close"].tap()
         app.buttons["rumi.floating"].tap()
-        XCTAssertEqual(app.textFields["chat.composer"].value as? String, "A draft to keep")
+        XCTAssertEqual(app.descendants(matching: .any)["chat.composer"].value as? String, draft)
     }
 
     @MainActor
     func testMedicationHelpKeepsSelectedContextWithoutSending() {
         let app = XCUIApplication()
-        app.launchArguments = ["-nudge.hasOnboarded", "YES", "-nudge.pathway", "metabolic", "-nudge.music", "NO", "-nudge.sound", "NO"]
+        app.launchArguments = ["-nudge.hasOnboarded", "YES", "-nudge.pathway", "metabolic", "-nudge.music", "NO", "-rumi.signedOut", "YES", "-nudge.sound", "NO"]
         app.launch()
         XCTAssertTrue(app.buttons["tab.care"].waitForExistence(timeout: 10))
         app.buttons["tab.care"].tap()
@@ -154,48 +117,29 @@ final class NudgeUITests: XCTestCase {
     }
 
     @MainActor
-    func testFastenSetupKeepsAuthorizationSeparateFromDemo() {
+    func testClosingSignInDoesNotEnterApp() {
         let app = XCUIApplication()
-        app.launchArguments = ["-nudge.hasOnboarded", "YES", "-nudge.pathway", "metabolic", "-nudge.music", "NO", "-nudge.sound", "NO"]
-        app.launch()
-        XCTAssertTrue(app.buttons["tab.care"].waitForExistence(timeout: 10))
-        app.buttons["tab.care"].tap()
-        app.buttons["care.Records & results"].tap()
-        let setup = app.buttons["records.fastenTestSetup"]
-        XCTAssertTrue(setup.waitForExistence(timeout: 5))
-        for _ in 0..<4 where !setup.isHittable { app.swipeUp() }
-        setup.tap()
-        XCTAssertTrue(app.staticTexts["fasten.setup.title"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["fasten.continue.0"].exists)
-        app.buttons["fasten.setup.close"].tap()
-        XCTAssertTrue(setup.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["fasten.setup.title"].exists)
-    }
-
-    @MainActor
-    func testUnconnectedSignInDoesNotEnterApp() {
-        let app = XCUIApplication()
-        app.launchArguments = ["-nudge.hasOnboarded", "NO", "-nudge.music", "NO"]
+        app.launchArguments = ["-nudge.hasOnboarded", "NO", "-nudge.music", "NO", "-rumi.signedOut", "YES"]
         app.launch()
         XCTAssertTrue(app.buttons["onboarding.signIn"].waitForExistence(timeout: 10))
         app.buttons["onboarding.signIn"].tap()
-        let notice = app.alerts["Sign-in isn't connected yet"]
-        XCTAssertTrue(notice.waitForExistence(timeout: 5))
-        notice.buttons["OK"].tap()
-        XCTAssertTrue(app.buttons["onboarding.continue"].exists)
+        XCTAssertTrue(app.buttons["signin.apple"].waitForExistence(timeout: 5))
+        app.buttons["signin.close"].tap()
+        XCTAssertTrue(app.buttons["onboarding.continue"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["tab.today"].exists)
     }
 
     @MainActor
     func testWelcomePreviewDoesNotChangeActiveScenario() {
         let app = XCUIApplication()
-        app.launchArguments = ["-nudge.hasOnboarded", "YES", "-nudge.music", "NO", "-nudge.sound", "NO", "-nudge.pathway", "metabolic"]
+        app.launchArguments = ["-nudge.hasOnboarded", "YES", "-nudge.music", "NO", "-rumi.signedOut", "YES", "-nudge.sound", "NO", "-nudge.pathway", "metabolic"]
         app.launch()
         XCTAssertTrue(app.buttons["today.settings"].waitForExistence(timeout: 10))
         app.buttons["today.settings"].tap()
         let preview = app.buttons["settings.previewWelcome"]
-        XCTAssertTrue(preview.waitForExistence(timeout: 5))
-        if !preview.isHittable { app.swipeUp() }
+        // Settings rows are built only when they scroll into view.
+        for _ in 0..<6 where !preview.waitForExistence(timeout: 1) || !preview.isHittable { app.swipeUp() }
+        XCTAssertTrue(preview.exists)
         preview.tap()
         XCTAssertTrue(app.buttons["onboarding.continue"].waitForExistence(timeout: 5))
         app.buttons["onboarding.continue"].tap()

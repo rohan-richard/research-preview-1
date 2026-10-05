@@ -27,7 +27,8 @@ final class RumiSocketConnection: RumiSocketConnecting {
         config.urlCache = nil
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         let task = session.webSocketTask(with: url)
-        task.maximumMessageSize = 262_144
+        // Spoken replies arrive as base64 audio frames.
+        task.maximumMessageSize = 4_194_304
         self.session = session
         socket = task
         try await withTaskCancellationHandler {

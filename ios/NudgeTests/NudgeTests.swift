@@ -6,25 +6,8 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct NudgeTests {
-    @Test func fastenSetupRejectsCrossOriginAndLiveEndpoints() throws {
-        let base = try #require(URL(string: "https://test.example"))
-        let returned = try #require(URL(string: "https://test.example/integrations/fasten/test/return"))
-        let webhook = try #require(URL(string: "https://test.example/integrations/fasten/test/webhook"))
-        let status = FastenSetupStatus(mode: "test", credentialsConfigured: true, organization: "active", privateKeyVerified: false,
-                                      webhookSecretConfigured: false, redirectConfigured: false, returnURL: returned, webhookURL: webhook,
-                                      authorizationEnabled: false, importEnabled: false)
-        #expect(status.hasValidEndpoints(for: base))
-        #expect(!status.privateKeyVerified && !status.importEnabled)
-        let other = try #require(URL(string: "https://other.example"))
-        #expect(!status.hasValidEndpoints(for: other))
-        let live = FastenSetupStatus(mode: "live", credentialsConfigured: true, organization: "active", privateKeyVerified: false,
-                                    webhookSecretConfigured: true, redirectConfigured: true, returnURL: returned, webhookURL: webhook,
-                                    authorizationEnabled: false, importEnabled: false)
-        #expect(!live.hasValidEndpoints(for: base))
-    }
-
     @Test func preparingContextDoesNotSendOrOverwriteDraft() {
-        let engine = CompanionEngine()
+        let engine = CompanionEngine(transport: HeldChatTransport())
         engine.setDraft("Keep my own words")
         let selected = CareContext(id: "selected", scenario: "metabolic", title: "Selected result", source: "Sample source", detail: "Dated evidence", question: "Suggested question")
         engine.prepare(context: selected)
@@ -37,7 +20,7 @@ struct NudgeTests {
     }
 
     @Test func switchingContextUpdatesUntouchedQuestionButProtectsEditedWords() {
-        let engine = CompanionEngine()
+        let engine = CompanionEngine(transport: HeldChatTransport())
         let first = CareContext(id: "a", scenario: "metabolic", title: "A", source: "Sample", detail: "A", question: "Question A")
         let second = CareContext(id: "b", scenario: "metabolic", title: "B", source: "Sample", detail: "B", question: "Question B")
         engine.prepare(context: first)
@@ -72,7 +55,7 @@ struct NudgeTests {
         let snapshot = SanoUserData(pathway: "metabolic", conversation: [turn], composerDraft: "Unsent", pendingCareContext: context)
         let decoded = try JSONDecoder().decode(SanoUserData.self, from: JSONEncoder().encode(snapshot))
         #expect(decoded.conversation?.first?.context == context)
-        let engine = CompanionEngine()
+        let engine = CompanionEngine(transport: HeldChatTransport())
         engine.restore(turns: decoded.conversation ?? [], draft: decoded.composerDraft ?? "", context: decoded.pendingCareContext)
         #expect(engine.pendingContext?.id == "medication-b")
         engine.reset()
@@ -274,21 +257,11 @@ struct NudgeTests {
         #expect(model.journeys[0].habits[1].keptDates.isEmpty)
     }
 
-    @Test func streamRequiresCompletionAndAcceptsSSEWithoutExtraSpace() throws {
-        var parser = ChatStreamDecoder()
-        _ = try parser.consume("data:{\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}")
-        #expect(try parser.consume("") == "Hello")
-        #expect(throws: CompanionAIError.self) { try parser.finish() }
-        _ = try parser.consume("data: [DONE]")
-        _ = try parser.consume("")
-        #expect(try parser.finish() == "Hello")
-    }
-
     @Test func chatRestoreMarksPartialReplyInterrupted() {
         var reply = ConversationTurn(role: .companion, text: "Partial")
         reply.streaming = true
         reply.delivery = .streaming
-        let engine = CompanionEngine()
+        let engine = CompanionEngine(transport: HeldChatTransport())
         engine.restore(turns: [reply], draft: "Unsent thought")
         #expect(engine.turns.first?.id == reply.id)
         #expect(engine.turns.first?.delivery == .interrupted)
@@ -315,11 +288,6 @@ struct NudgeTests {
         #expect(engine.turns.last?.text == "Current response")
         #expect(engine.turns.last?.rich == ConversationTurn.Rich.none)
         #expect(!engine.isThinking)
-    }
-
-    @Test func configuredGatewayCompletesSyntheticChat() async throws {
-        let result = try await CompanionAI().stream(system: "This is a technical connectivity check. Reply briefly without medical content.", messages: [.init(role: "user", content: "Say: Rumi is ready.")], onDelta: { _ in })
-        #expect(!result.isEmpty)
     }
 
     @Test func replyDraftsRoundTripWithoutBecomingMessages() throws {

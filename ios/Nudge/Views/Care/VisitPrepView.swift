@@ -43,7 +43,7 @@ struct VisitPrepView: View {
                         }
                         Button { showAIConsent = true } label: { Label("Think it through with Rumi", systemImage: "sparkles").frame(minHeight: 44) }
                             .disabled(isGenerating || !model.aiRouter.canSend).accessibilityIdentifier("prep.askAI")
-                        Text("Using \(model.aiRouter.mode.title) · change in Settings → AI connection")
+                        Text("Using Rumi chat · see Settings → AI connection")
                             .font(NudgeType.rounded(12)).foregroundStyle(Theme.inkMuted)
                         if isGenerating {
                             HStack { ProgressView(); Text("Drafting possible questions…"); Spacer(); Button("Stop") { stopAI() } }
@@ -81,7 +81,7 @@ struct VisitPrepView: View {
                     }
                     if draft.step < 3 {
                         Button("Continue") { self.draft?.step += 1; save() }
-                            .buttonStyle(.borderedProminent).controlSize(.large).tint(Theme.buttonFill)
+                            .buttonStyle(.borderedProminent).controlSize(.large).tint(Theme.buttonFill).foregroundStyle(Theme.onAccent)
                             .accessibilityIdentifier("prep.continue")
                     }
                 } else if appointment == nil || appointment?.status == .cancelled {
@@ -96,7 +96,7 @@ struct VisitPrepView: View {
         .alert("Use AI for these questions?", isPresented: $showAIConsent) {
             Button("Draft suggestions") { generateQuestions() }
             Button("Not now", role: .cancel) { }
-        } message: { Text("Using \(model.aiRouter.mode.title). Your entries on this visit-prep screen and the selected sample visit are sent to the selected AI service. Only use sample information in this demo. Suggestions aren't medical advice or part of your brief until you add them.") }
+        } message: { Text("Using Rumi chat. Your entries on this visit-prep screen and the selected sample visit are sent to Rumi's chat server. Only use sample information in this demo. Suggestions aren't medical advice or part of your brief until you add them.") }
         .alert("EHR delivery isn't connected yet", isPresented: $showDeliveryInfo) {
             Button("OK", role: .cancel) { }
         } message: { Text("Nothing has been sent to \(appointment?.with ?? "your care team"). Keep or export the reviewed copy to bring to the visit.") }

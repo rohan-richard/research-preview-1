@@ -35,6 +35,9 @@ import Observation
     var workflows: [ReviewedWorkflow] = []
     var storageError: Bool = false
 
+    // MARK: Account
+    let api: RumiAPI
+
     func openYou(_ destination: YouDestination) {
         youPath = NavigationPath()
         youPath.append(destination)
@@ -86,7 +89,8 @@ import Observation
 
     /// The name the world greets — the user's own when given.
     var displayFirstName: String {
-        profile.firstName.isEmpty ? persona.firstName : profile.firstName
+        if isLive { return liveFirstName ?? api.user?.displayName.components(separatedBy: " ").first ?? "there" }
+        return profile.firstName.isEmpty ? persona.firstName : profile.firstName
     }
 
     // MARK: Care pathway — the experience adapts to the condition
@@ -195,7 +199,16 @@ import Observation
     let orb = OrbState()
     let companion: CompanionEngine
     let aiRouter: RumiAIRouter
+    let portal: RumiPortalDevice
+    let records: HealthRecords
     var aiWorkspaces: [String: RumiChatWorkspace] = [:]
+    /// The sample patient's own edits, kept aside while a signed-in patient's real data is showing.
+    var sampleUserState: SampleUserState? = nil
+    /// The signed-in patient still has to tell the API about themselves before chat opens.
+    var needsAboutYou = false
+    var liveConditions: [CareCondition]? = nil
+    var liveCarePlan: CarePlan? = nil
+    var liveFirstName: String? = nil
 
     /// Transient acknowledgment after a quick log — every log gets a response,
     /// never a mute database write.
@@ -204,8 +217,14 @@ import Observation
     private let storageDirectory: URL
 
     init(storageDirectory: URL = .documentsDirectory, aiRouter: RumiAIRouter? = nil) {
-        let router = aiRouter ?? RumiAIRouter()
+        let api = RumiAPI()
+        self.api = api
+        records = HealthRecords(api: api)
+        let router = aiRouter ?? RumiAIRouter(api: api)
         self.aiRouter = router
+        let portal = RumiPortalDevice()
+        self.portal = portal
+        router.device = portal
         companion = CompanionEngine(transport: router)
         self.storageDirectory = storageDirectory
         hasOnboarded = UserDefaults.standard.bool(forKey: "nudge.hasOnboarded")
@@ -298,31 +317,25 @@ import Observation
     @discardableResult
     func persistUserData() -> Bool {
         captureAIWorkspace()
-        let temporary = aiWorkspaces["showcase"]
         let saved = PersistenceService.save(SanoUserData(
             pathway: pathway.rawValue,
-            entries: entries,
-            logs: logs,
-            memories: memories,
+            entries: sampleUserState?.entries ?? entries,
+            logs: sampleUserState?.logs ?? logs,
+            memories: sampleUserState?.memories ?? memories,
             guideItems: guideItems,
             memoryNotes: memory,
-            threads: threads,
+            threads: sampleUserState?.threads ?? threads,
             requests: requests,
             documents: careDocuments,
-            paidBillKeys: bills.filter { $0.status == .paid }.map(\.key),
+            paidBillKeys: (sampleUserState?.bills ?? bills).filter { $0.status == .paid }.map(\.key),
             derivedJourneyGoals: Array(derivedJourneyGoals),
             messageDrafts: messageDrafts,
             demoRecordImport: demoRecordImport,
-            appointments: appointments,
+            appointments: sampleUserState?.appointments ?? appointments,
             visitPreps: visitPreps,
-            journeys: journeys,
-            habitCheckIns: habitCheckIns,
-            conversation: temporary?.turns ?? [],
-            composerDraft: temporary?.draft ?? "",
+            journeys: sampleUserState?.journeys ?? journeys,
+            habitCheckIns: sampleUserState?.habitCheckIns ?? habitCheckIns,
             workflows: workflows,
-            pendingCareContext: temporary?.context,
-            aiMode: aiRouter.mode,
-            aiBackend: aiRouter.settings,
             aiWorkspaces: aiWorkspaces
         ), directory: storageDirectory)
         storageError = !saved
@@ -343,7 +356,6 @@ import Observation
         guard persistUserData() else { return }
         companion.reset()
         aiRouter.suspend()
-        aiRouter.configure(mode: .showcase, settings: .init())
         aiRouter.clientID = UUID()
         aiWorkspaces = [:]
         demoRecordImport = nil
@@ -487,6 +499,7 @@ import Observation
         withAnimation(NudgeSpring.ui) {
             entries.insert(entry, at: 0)
         }
+        saveEntryLive(entry)
         Haptics.success()
         SoundEngine.shared.send()
         persistUserData()
@@ -558,11 +571,13 @@ import Observation
     @discardableResult
     func addLog(kind: String, severity: Double, note: String?,
                 bodyRegion: String? = nil, linkedMedID: String? = nil) -> SupportPlan {
-        logs.append(SymptomLog(
+        let log = SymptomLog(
             kind: kind, severity: severity, at: .now,
             note: note?.isEmpty == true ? nil : note,
             bodyRegion: bodyRegion, linkedMedID: linkedMedID
-        ))
+        )
+        logs.append(log)
+        saveLogLive(log)
         persistUserData()
         return PersonaFixtures.supportPlan(pathway: pathway, kind: kind, severity: severity)
     }
@@ -635,13 +650,15 @@ import Observation
                 actionLabel: "Start"
             ))
         }
-        journeys.append(Journey(
+        let journey = Journey(
             title: program.title,
             why: program.personalFit,
             habits: [AtomicHabit(title: "Two minutes with the program",
                                  contextLine: "whenever today bends a little", keptDates: [])],
             gardenSeed: 57
-        ))
+        )
+        journeys.append(journey)
+        saveNewJourneyLive(journey)
         agentActions.insert(AgentAction(
             title: "Set up \(program.title)",
             detail: "I'll register you, sync the schedule, and keep the first week gentle.",
@@ -710,7 +727,7 @@ import Observation
                 detail: thread.preview,
                 destination: .thread(thread.id)))
         }
-        if !resultAcknowledged, let result = resultToAck {
+        if !isLive, !resultAcknowledged, let result = resultToAck {
             items.append(NeedsYouItem(kind: .result,
                 title: "New result — \(result.title)",
                 detail: result.detail,
@@ -742,7 +759,8 @@ import Observation
     /// already live in the "Needs you" band; this count is the "new from your
     /// care team" signal specifically.
     var messageUnreadCount: Int { threads.filter(\.unread).count }
-    var recordUpdateCount: Int { (!resultAcknowledged && resultToAck != nil) ? 1 : 0 }
+    // The result to acknowledge is a sample-patient story; real records have no such flag yet.
+    var recordUpdateCount: Int { (!isLive && !resultAcknowledged && resultToAck != nil) ? 1 : 0 }
     var careUnreadCount: Int { messageUnreadCount + recordUpdateCount }
 
     /// Routes into a specific Care surface (from Today's "Needs you").
@@ -1072,10 +1090,10 @@ import Observation
         derivedJourneyGoals.insert(goal.title)
         let habit = AtomicHabit(title: behavioralHabit(for: goal),
                                 contextLine: "a tiny version, built around your day", keptDates: [])
+        let journey = Journey(title: goal.title, why: goal.detail, habits: [habit], gardenSeed: Int.random(in: 5...60), planGoal: goal.title)
+        saveNewJourneyLive(journey)
         withAnimation(NudgeSpring.delight) {
-            journeys.append(Journey(title: goal.title, why: goal.detail,
-                                    habits: [habit], gardenSeed: Int.random(in: 5...60),
-                                    planGoal: goal.title))
+            journeys.append(journey)
         }
         orb.celebrate()
         Haptics.bloom()

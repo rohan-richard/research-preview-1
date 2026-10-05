@@ -28,7 +28,7 @@ struct RecordsDrawerView: View {
 
                 FastenRecordsCard()
 
-                DisclosureGroup("Sample sources") {
+                DisclosureGroup(model.isLive ? "Connected sources" : "Sample sources") {
                 VStack(spacing: 9) {
                     ForEach(model.sources) { source in
                         HStack {

@@ -127,6 +127,8 @@ struct ConsentEntry: Identifiable, Equatable {
     let scope: String
     var granted: Bool
     let at: Date
+    /// The API consent this row sets, when the patient is signed in.
+    var apiScope: String? = nil
 }
 
 struct MemoryItem: Identifiable, Equatable, Codable {

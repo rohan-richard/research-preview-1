@@ -21,13 +21,13 @@ struct CareTeamView: View {
                     }
                 }
                 Text("Visits").font(NudgeType.serif(22))
-                ForEach(model.appointments) { appointment in
+                ForEach(model.appointments.sorted { $0.date > $1.date }) { appointment in
                     OrganicSurface {
                         VStack(alignment: .leading, spacing: 10) {
                             Text(appointment.with).font(NudgeType.serif(18))
                             Text("\(appointment.date.formatted(date: .abbreviated, time: .shortened)) · \(appointment.location)")
                                 .font(NudgeType.rounded(13)).foregroundStyle(Theme.inkMuted)
-                            if appointment.status != .cancelled {
+                            if appointment.status != .cancelled && appointment.status != .visited {
                                 NavigationLink(value: YouDestination.visitPrep(appointment.id)) {
                                     Label("Prepare for this visit", systemImage: "square.and.pencil").frame(minHeight: 44)
                                 }

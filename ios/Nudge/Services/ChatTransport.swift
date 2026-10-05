@@ -1,6 +1,10 @@
 import Foundation
 
-/// UI-independent transport seam. A future WebSocket adapter must implement the agreed server contract here.
+nonisolated struct AIChatMessage: Codable, Equatable {
+    let role: String
+    let content: String
+}
+
 @MainActor protocol ChatTransport {
     func stream(requestID: UUID, system: String, messages: [AIChatMessage], onDelta: @escaping @MainActor (String) -> Void) async throws -> String
 }

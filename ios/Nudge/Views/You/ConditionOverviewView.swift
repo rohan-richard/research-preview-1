@@ -11,7 +11,7 @@ struct ConditionOverviewView: View {
             VStack(alignment: .leading, spacing: 18) {
                 hero
 
-                if let phase = model.persona.phase {
+                if !model.isLive, let phase = model.persona.phase {
                     phaseCard(phase)
                 }
 
@@ -20,19 +20,22 @@ struct ConditionOverviewView: View {
                     .foregroundStyle(Theme.ink)
                     .padding(.top, 4)
 
-                ForEach(model.persona.conditions) { condition in
+                ForEach(model.shownConditions) { condition in
                     conditionCard(condition)
                 }
 
                 carePlanCard
 
-                Text("What to expect")
-                    .font(NudgeType.serif(21))
-                    .foregroundStyle(Theme.ink)
-                    .padding(.top, 4)
+                // The expectations are written for each sample patient; real records carry no such guidance.
+                if !model.isLive {
+                    Text("What to expect")
+                        .font(NudgeType.serif(21))
+                        .foregroundStyle(Theme.ink)
+                        .padding(.top, 4)
 
-                ForEach(model.persona.expectations) { item in
-                    expectationCard(item)
+                    ForEach(model.persona.expectations) { item in
+                        expectationCard(item)
+                    }
                 }
 
                 clinicalDataLinks
@@ -65,7 +68,7 @@ struct ConditionOverviewView: View {
                         .font(NudgeType.kicker())
                         .tracking(1.6)
                         .foregroundStyle(.white.opacity(0.85))
-                    Text(model.persona.conditionChip)
+                    Text(model.shownConditionChip)
                         .font(NudgeType.serif(23))
                         .foregroundStyle(.white)
                 }
@@ -150,7 +153,7 @@ struct ConditionOverviewView: View {
     // MARK: The plan from the care team
 
     private var carePlanCard: some View {
-        let plan = model.persona.carePlan
+        let plan = model.shownCarePlan
         return OrganicSurface(radius: 32) {
             VStack(alignment: .leading, spacing: 12) {
                 Kicker(text: "The plan from \(plan.author)", color: Theme.sky)
