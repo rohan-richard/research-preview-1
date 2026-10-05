@@ -1,0 +1,10 @@
+[
+  {"type": "glossary", "slug": "a1c", "data": {"term": "A1c", "plain": "A blood test that shows your average blood sugar over about three months."}},
+  {"type": "glossary", "slug": "blood-pressure", "data": {"term": "Blood pressure", "plain": "Two numbers. The top one is the push when your heart beats. The bottom one is the push between beats."}},
+  {"type": "glossary", "slug": "egfr", "data": {"term": "eGFR", "plain": "A number that shows how well your kidneys filter. Higher is better."}},
+  {"type": "glossary", "slug": "fasting-glucose", "data": {"term": "Fasting glucose", "plain": "Your blood sugar first thing in the morning, before you eat."}},
+  {"type": "glossary", "slug": "ldl", "data": {"term": "LDL", "plain": "The cholesterol that can build up in blood vessels. Lower is better."}},
+  {"type": "glossary", "slug": "neuropathy", "data": {"term": "Neuropathy", "plain": "Nerve damage. It often feels like tingling or numbness in the hands or feet."}},
+  {"type": "glossary", "slug": "prehab", "data": {"term": "Prehab", "plain": "Exercises you do before surgery so you recover faster after it."}},
+  {"type": "glossary", "slug": "sglt2", "data": {"term": "SGLT2 inhibitor", "plain": "A pill that helps the kidneys pass extra sugar in urine. It also protects the heart and kidneys."}}
+]

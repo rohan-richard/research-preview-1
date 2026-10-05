@@ -1,0 +1,98 @@
+[
+  {
+    "type": "currents",
+    "slug": "salt-that-hides-in-sunday",
+    "domain": "t2d",
+    "data": {
+      "title": "The salt that hides in Sunday",
+      "kind": "article",
+      "duration_seconds": 20,
+      "media_url": null,
+      "image_url": "https://cdn.rumi.example/currents/salt.jpg",
+      "topics": ["food", "blood_pressure"],
+      "body": "One deli sandwich can carry more sodium than three home dinners. The swap isn't \"no sandwich\" — it's half the meat, double the tomato, same sandwich."
+    }
+  },
+  {
+    "type": "currents",
+    "slug": "evening-walk",
+    "domain": "t2d",
+    "data": {
+      "title": "Fifteen minutes that outwork an hour",
+      "kind": "article",
+      "duration_seconds": 180,
+      "media_url": null,
+      "image_url": "https://cdn.rumi.example/currents/walk.jpg",
+      "topics": ["movement", "glucose"],
+      "body": "The walk after dinner meets your blood sugar exactly when it peaks. Muscles pull glucose straight from the blood for about ninety minutes after you eat."
+    }
+  },
+  {
+    "type": "currents",
+    "slug": "what-a1c-means",
+    "domain": "t2d",
+    "data": {
+      "title": "What an A1c of 8.4 actually means",
+      "kind": "video",
+      "duration_seconds": 90,
+      "media_url": "https://cdn.rumi.example/currents/a1c.mp4",
+      "image_url": "https://cdn.rumi.example/currents/a1c.jpg",
+      "topics": ["labs", "glucose"]
+    }
+  },
+  {
+    "type": "currents",
+    "slug": "cold-plates-quiet-smells",
+    "domain": "oncology",
+    "data": {
+      "title": "Cold plates, quiet smells",
+      "kind": "article",
+      "duration_seconds": 20,
+      "media_url": null,
+      "image_url": "https://cdn.rumi.example/currents/cold-plates.jpg",
+      "topics": ["food", "nausea"],
+      "body": "Nausea hates cold food — less aroma, less trouble. Chilled fruit, yogurt, rice at room temperature."
+    }
+  },
+  {
+    "type": "currents",
+    "slug": "week-one-new-knee",
+    "domain": "procedure",
+    "data": {
+      "title": "Week one with a new knee",
+      "kind": "article",
+      "duration_seconds": 180,
+      "media_url": null,
+      "image_url": "https://cdn.rumi.example/currents/knee.jpg",
+      "topics": ["recovery", "movement"],
+      "body": "What the first seven days look like, honestly: swelling, slow stairs, and the small wins that add up."
+    }
+  },
+  {
+    "type": "currents",
+    "slug": "weight-is-a-heart-number",
+    "domain": "cardiometabolic",
+    "data": {
+      "title": "Why your weight is a heart number",
+      "kind": "audio",
+      "duration_seconds": 120,
+      "media_url": "https://cdn.rumi.example/currents/weight-heart.m4a",
+      "image_url": "https://cdn.rumi.example/currents/weight-heart.jpg",
+      "topics": ["weight", "heart"]
+    }
+  },
+  {
+    "type": "currents",
+    "slug": "water-is-a-kidneys-best-friend",
+    "domain": null,
+    "data": {
+      "title": "Water is a kidney's best friend",
+      "kind": "article",
+      "duration_seconds": 20,
+      "media_url": null,
+      "image_url": "https://cdn.rumi.example/currents/water.jpg",
+      "topics": ["kidneys", "hydration"],
+      "body": "A refilled bottle does quiet, real work — steadier filtering, easier numbers. Not a gallon. Just don't run dry."
+    }
+  }
+]

@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rumi
+      POSTGRES_PASSWORD: rumi
+      POSTGRES_DB: rumi
+    ports:
+      - "5432:5432"
+    volumes:
+      - rumi-db:/var/lib/postgresql/data
+
+volumes:
+  rumi-db:

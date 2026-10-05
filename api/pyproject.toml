@@ -1,0 +1,31 @@
+[project]
+name = "rumi-api"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "alembic>=1.13",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "pyjwt[crypto]>=2.10",
+    "httpx[http2]>=0.27",
+    "boto3>=1.35",
+    "tzdata>=2024.1",
+    "pywebpush>=2.5.0",
+    "standardwebhooks>=1.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
